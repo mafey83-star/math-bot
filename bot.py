@@ -1,21 +1,21 @@
+import os
 import random
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-TOKEN = "8708433516:AAGJLRhNS105RasczF8x8Mxnyk03d87klNY"
+TOKEN = os.getenv("TOKEN")
 
-# --- USERS ---
 parents = {"Mafey_Alexx", "MatienkoLulu"}
+
 kids = {
-    "veronichka_anime": 5,   # 5 клас
-    "zuzu_cat45": 4          # 4 клас
+    "veronichka_anime": 5,
+    "zuzu_cat45": 4
 }
 
 scores = {}
-
 daily_tasks = {}
+progress = {}
 
-# --- TASK GENERATOR ---
 def generate_task(level):
     if level == 4:
         a, b = random.randint(10, 99), random.randint(2, 12)
@@ -35,37 +35,34 @@ def generate_task(level):
         return f"{a} / {b}", a // b
 
 
-# --- START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.username
 
     if user in kids:
         level = kids[user]
-        tasks = []
 
+        tasks = []
         for _ in range(4):
             q, ans = generate_task(level)
             tasks.append((q, ans))
 
         daily_tasks[user] = tasks
+        progress[user] = 0
         scores.setdefault(user, 0)
 
-        msg = "📚 Твої задачі на сьогодні:\n\n"
+        msg = "📚 Твої задачі:\n\n"
         for i, (q, _) in enumerate(tasks, 1):
             msg += f"{i}) {q} = ?\n"
-
-        msg += "\n✍️ Надсилай відповіді по черзі."
 
         await update.message.reply_text(msg)
 
     elif user in parents:
-        await update.message.reply_text("👨‍👩‍👧 Батьківський доступ активний. Напиши /stats")
+        await update.message.reply_text("👨‍👩‍👧 Батьківський доступ: /stats")
 
     else:
-        await update.message.reply_text("⛔ Тебе немає в системі.")
+        await update.message.reply_text("⛔ Немає доступу")
 
 
-# --- ANSWERS ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.username
     text = update.message.text
@@ -83,23 +80,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введи число")
         return
 
-    task_list = daily_tasks[user]
+    idx = progress.get(user, 0)
 
-    # знайти перший нерозв’язаний
-    for i, (q, correct) in enumerate(task_list):
-        if correct is not None:
-            if correct == answer:
-                scores[user] += 1
-                task_list[i] = (q, None)
-                await update.message.reply_text("✅ Правильно!")
-                return
-            else:
-                task_list[i] = (q, None)
-                await update.message.reply_text(f"❌ Неправильно. Відповідь: {correct}")
-                return
+    if idx >= len(daily_tasks[user]):
+        await update.message.reply_text("Всі задачі виконані 👍")
+        return
+
+    q, correct = daily_tasks[user][idx]
+
+    if answer == correct:
+        scores[user] = scores.get(user, 0) + 1
+        await update.message.reply_text("✅ Правильно!")
+    else:
+        await update.message.reply_text(f"❌ Неправильно. Відповідь: {correct}")
+
+    progress[user] = idx + 1
 
 
-# --- STATS ---
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.username
 
@@ -114,11 +111,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# --- MAIN ---
-app = Application.builder().token(TOKEN).build()
+def main():
+    app = Application.builder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-app.run_polling()
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
